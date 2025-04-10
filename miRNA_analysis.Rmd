@@ -1,0 +1,309 @@
+---
+title: "miRNA_Analysis"
+author: "Fay Lindfield-Butler"
+date: "2025-03-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Packages and Data
+
+```{r}
+library(readxl)
+library(pheatmap)
+library(dendextend)
+library(ggplot2)
+library(readxl)
+library(multiMiR)
+library(miRNAtap)
+library(miRBaseConverter)
+library(miRNAtap.db)
+library(dplyr)
+library(multiMiR)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(tibble)
+
+
+df <- read_excel("/Users/faylindfield/Documents/Project_Delta/microRNA_HDV.xlsx")
+```
+
+
+### Heatmap of all data using hierarchical clustering
+
+```{r}
+miRNA_data1 <- df[, c(48:209)]
+data_matrix1 <- as.matrix(miRNA_data1)
+
+distance_matrix1 <- dist(miRNA_data1)  
+# Calculate distance matrix
+hc <- hclust(distance_matrix1, method = "complete")  
+# Then perform cluster 
+
+# Plot dendrogram
+plot(hc, labels = FALSE, hang = -1, main = "Dendrogram of miRNA Expression Levels")
+
+# Create heatmap + dendrogram
+pheat <- pheatmap(
+  miRNA_data1,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+   main = "Heatmap of miRNA Expression Levels"
+)
+```
+
+# Create heatmap for mono and co-infection (using stricter criteria)
+## Changed code to select for co-infection etc, e.g. (would be HDV_RNA_c = "1")
+
+
+```{r}
+BEA_df <- subset(miRNA_data_2, HDV_RNA_c == "0")
+# isolate miRNA names
+BEA_df_2 <- BEA_df[, !(names(BEA_df) %in% 
+                         c("HDV_RNA_c","lvl_HBV_DNA", "lvl_HBsAg", "HDV_RNA", "BEA code", "Gender", "Age", "HBV_genotype", "delta_genotype", "BEA", "HBV_DNA", "HBsAg", "combo", "HBeAg", "log10_HDV_RNA", "log10_HBV_DNA", "log10_HBsAg", "HBsAg/HBV_DNA_ratio", "HDV_IgM_titre", "Normal_ALT", "AST", "PLT", "High_fib", "Bili", "INR", "BEA", "HBcrAg_detected", "cirrhosis", "IFN", "IFN_response_ovrerall", "IFN_response", "Assay_#"))]
+
+# apply cut-off
+BEA_df_2_means <- colMeans(BEA_df_2)
+BEA_df_2_means <- as.data.frame(BEA_df_2_means)
+BEA_df_2_means <- BEA_df_2_means[!apply(BEA_df_2_means, 1, function(x) all(x > -6 & x < 2)), , drop=FALSE]
+
+# re-append dataframe
+#BEA_df_2_means_names <- rownames(BEA_df_2_means)
+BEA_df_2_means_names <- c("hsa-miR-663b", "hsa-miR-362-5p", "hsa-miR-624-5p", "hsa-miR-98-5p", "hsa-miR-548c-5p", "hsa-miR-16-5p", "hsa-miR-122-5p", "hsa-miR-21-5p", "hsa-miR-223-3p", "hsa-miR-451a")
+top_BEA_C_miRNA <- BEA_df_2 %>% select(contains(BEA_df_2_means_names))
+
+# heat map of top DE miRNA associated with BEA_C
+pheat <- pheatmap(
+  top_BEA_C_miRNA,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  main = "miRNA associated with RNA HDV+",
+)
+ggsave("miRNA.png", plot = pheat, width = 5, height = 6, dpi = 300)
+```
+
+
+
+
+### Stat analysis
+
+# Load Stat Libraries
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(rstatix)
+```
+
+# Split into mono and co-infection
+## Changed code to select for co-infection etc, e.g. (would be HDV_RNA_c = "1")
+### Selected top 10 differentially expressed miRNAs
+
+```{r}
+spf <- subset(miRNA_data_2,HDV_RNA_c == "0")
+spf <- spf %>% 
+  dplyr::select("hsa-miR-362-5p")
+  #dplyr::select("hsa-miR-663b", "hsa-miR-362-5p", "hsa-miR-624-5p", "hsa-miR-98-5p", "hsa-miR-548c-5p", "hsa-miR-16-5p", "hsa-miR-122-5p", "hsa-miR-21-5p", "hsa-miR-223-3p", "hsa-miR-451a")
+spf <- as.list(spf)
+spf <- gsub('"', '', spf)
+print(spf)
+```
+
+# Conduct sig testing, along with variance and normality
+## Changed code re-iteratively according to:
+### 1. miRNA used (copied in expression lvls)
+### 2. adjust sig test according to outcome of var and norm tests
+
+```{r}
+one_d1 <- read_excel("/Users/faylindfield/Documents/Project_Delta/hsa-miR-663b.xlsx")
+one_d <- data.frame(
+  Group = c(rep("HDV+", 25), rep("HDV-", 25)), 
+  # Each group has 25 entries
+  Value = c(-4.959, -7.8034, -7.6379, -6.3633, -8.9123, -6.4129, -9.4979, -6.6886, -7.4836, -9.1256, -9.1245, -8.7005, -9.0123, -9.0497, -5.8998, -8.5916, -7.2059, -6.876, -4.805, -8.5894, -9.1122, -6.0101, -7.6186, -9.9997, -8.2339, -9.4015, -7.9771, -8.0123, -7.071, -8.3472, -7.0012, -7.1789, -6.9727, -7.5567, -5.8891, -5.8712, -6.9557, -5.9713, -6.0123, -7.1255, -5.383, -5.163, -5.2789, -5.2232, -5.1217, -4.1213, -5.3019, -5.0449, -5.0012, -5.7428))
+
+norm_HDVp <- shapiro.test(one_d1$`HDV+`)
+norm_HDVpv <- norm_HDVp$p.value
+norm_HDVn <- shapiro.test(one_d1$`HDV-`)
+norm_HDVnv <- norm_HDVn$p.value
+var_HDV <- levene_test(Value ~ Group, data = one_d)
+var_HDVv <- var_HDV$p
+HDV_result <- t.test(Value ~ Group, data = one_d)
+# changed type of sig test according to outcome of var and norm
+
+HDV_result <- HDV_result$p.value
+
+HDV_test <- cbind(norm_HDVpv, norm_HDVnv, var_HDVv, HDV_result)
+# created a df containing outcome of norm, var and significance test
+
+write.csv(HDV_test, "hsa-miR-362-5p.csv", row.names = FALSE)
+# again, changed this for every miRNA used
+```
+
+# GO analysis
+
+```{r}
+#BiocManager::install(c("biomaRt"))
+library(biomaRt)
+
+# Connect to Ensembl
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+
+# Query target genes for miRNAs (adjust based on your species and miRNA list)
+targets <- getBM(attributes = c("ensembl_gene_id", "entrezgene_id"),
+                 filters = "mirbase_id",
+                 values = c("hsa-miR-663b", "hsa-miR-362-5p", "hsa-miR-624-5p", "hsa-miR-98-5p", "hsa-miR-548c-5p", "hsa-miR-122-5p", "hsa-miR-21-5p", "hsa-miR-223-3p"),  
+                 mart = mart)
+
+# obtain ID
+entrez_ids <- targets$entrezgene_id
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+# Perform enrichment (e.g., for Biological Process ontology)
+go_result <- enrichGO(gene = entrez_ids,
+                      OrgDb = org.Hs.eg.db,
+                      keyType = "ENTREZID",
+                      ont = "BP",  # Options: "BP", "MF", "CC"
+                      pvalueCutoff = 0.05,
+                       minGSSize = 5,
+                       maxGSSize = 1000)
+
+# View results
+head(go_result)
+
+barplot(go_result, showCategory = 10)
+dotplot(go_result, showCategory = 10)
+```
+
+#FIB-4 and miRNA
+
+#step1. prepare dataframe
+```{r}
+#Load df
+df <- read_excel("/Users/faylindfield/Documents/Project_Delta/microRNA_HDV.xlsx")
+
+#select miRNA with full data
+miRNA_data1 <- df[, c(48:209)]
+data_matrix1 <- as.matrix(miRNA_data1)
+
+# parameters of interest 
+parameters <- c("Assay_#", "Gender", "Age", "HBV_genotype", "delta_genotype", "HDV_RNA_c", "HBV_DNA", "HBsAg", "HDV_RNA", "combo", "HBeAg", "log10_HDV_RNA", "log10_HBV_DNA", "log10_HBsAg", "HBsAg/HBV_DNA_ratio", "HDV_IgM_titre", "Normal_ALT", "AST", "PLT", "High_fib", "Bili", "INR", "BEA", "HBcrAg_detected", "cirrhosis", "IFN", "IFN_response_ovrerall", "IFN_response")
+
+
+# select parameters
+new_df <- df %>% select(contains(parameters))
+
+# top miRNA (only sig dif)
+miRNA_names <- c("hsa-miR-663b", "hsa-miR-362-5p", "hsa-miR-624-5p", "hsa-miR-98-5p", "hsa-miR-548c-5p", "hsa-miR-122-5p", "hsa-miR-21-5p", "hsa-miR-223-3p", "hsa-miR-451a", "hsa-miR-16-5p")
+
+
+miRNA_names_df <- miRNA_data1 %>% select(contains(miRNA_names))
+
+# re-append to dataframe
+miRNA_data <- cbind(new_df, miRNA_names_df)
+```
+
+#step2. select for HDV+ and FIB-4 scores
+
+```{r}
+# select for RNA HDV+ 
+FIB4_df <- subset(miRNA_data, HDV_RNA_c == "1")
+
+# remove other parameters, keep high_fib
+FIB4_df_2 <- FIB4_df[, !(names(FIB4_df) %in% 
+                         c("HDV_RNA_c","lvl_HBV_DNA", "lvl_HBsAg", "HDV_RNA", "BEA code", "Gender", "Age", "HBV_genotype", "delta_genotype", "BEA", "HBV_DNA", "HBsAg", "combo", "HBeAg", "log10_HDV_RNA", "log10_HBV_DNA", "log10_HBsAg", "HBsAg/HBV_DNA_ratio", "HDV_IgM_titre", "Normal_ALT", "AST", "PLT", "Bili", "INR", "BEA", "HBcrAg_detected", "cirrhosis", "IFN", "IFN_response_ovrerall", "IFN_response", "Assay_#"))]
+
+#FIB4_df_2: contains df of HDV+ patients and column containing FIB-4 score
+```
+
+#step3. Separate low and high scores
+#low fib: 0
+#high fib: 1
+```{r}
+High_fib <- FIB4_df_2 %>% filter(High_fib %in% c("1"))
+High_fib$High_fib <- NULL 
+Low_fib <- FIB4_df_2 %>% filter(High_fib %in% c("0"))
+Low_fib$High_fib <- NULL 
+
+```
+
+
+#step4. Plot heatmaps
+
+```{r}
+pheat1 <- pheatmap(
+  High_fib,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  main = "High Fib-4",
+)
+
+pheat2 <- pheatmap(
+  Low_fib,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  main = "Low Fib-4",
+)
+
+#save plots
+ggsave("Highfib.png", plot = pheat1, width = 5, height = 10, dpi = 300)
+ggsave("lowfib.png", plot = pheat2, width = 5, height = 10, dpi = 300)
+
+```
+
+
+#step 5. graphing - swicth data for new graphs
+```{r}
+Biomarkers <- read_excel("/Users/faylindfield/Documents/Project_Delta/Data/Biomarkers.xlsx", sheet = "Sheet1")
+
+Plot <- ggplot(Biomarkers, aes(x = Group, y = Value, fill = Group)) +
+  geom_boxplot(width = 0.3) +
+  geom_jitter(position = position_jitterdodge(dodge.width = 0, jitter.width = 0), color = "black", alpha = 0.7) +
+  labs(title = "", x = "IFN Responder Class", y = "HBcrAg [log10 U/ml]") +
+  theme_minimal() +
+  theme(
+    legend.position = "none", 
+    plot.title = element_text(face = "bold", hjust = 0.5), 
+    axis.title.x = element_text(face = "bold"),  
+    axis.title.y = element_text(face = "bold")) +
+  scale_fill_manual(values = c("steelblue4", "slategray1"))
+
+print(Plot)
+ggsave("Plot_FIB4_122.png",Plot , width = 4, height = 4)
+
+```
+
+#step 6. correlation check
+```{r}
+
+#HDV <- c(4.12, 4.32, 4.96, 3.85, 5.36, 5.33, 4.967, 3.35, 4.07, 3.86, 4.67, 4.99, 2.29, 3.61, 3.17, 5.85, 5.46, 3.87, 2.97, 3.11, 4.89, 5.046)
+
+HDV <- c(5.962, 4.12, 4.32, 4.96, 3.85, 5.36, 5.33, 4.967, 3.21, 3.35, 4.07, 3.86, 4.67, 4.99, 2.29, 3.61, 3.17, 5.85, 5.46, 3.87, 2.97, 3.11, 4.89, 5.046)
+
+miRNA3 <- c(4.1, 4.9, 4.4, 5.1, 5.3, 5.1, 5.7, 2, 4.2, 3.6, 4.3, 4.5, 4.5, 4.3, 4.4, 4.3, 2, 2.6, 5.7, 4, 3.6, 0, 2.3, 5.2)
+
+#miRNA3 <- c(362, 9976, 5514, 6078, 7107, 21172, 10158, 455, 4727, 6065, 7089, 18076, 4978, 5514, 91, 34978, 18705, 61, 4497, 6112, 35610, 15700)
+both <- cor(HDV, miRNA3, method = "pearson")
+print(both)
+both <- cbind(HDV, miRNA3)
+
+
+plot4 <-ggplot(both, aes(x = HDV, y = miRNA3)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, col = "steelblue4") +
+  labs(title = "HDV RNA", x = "Log 10 HDV RNA local [copies/ml]", y = "HBcrAg [log10 U/ml]") +
+  #annotate("text", x = min(HDV), y = max(miRNA3), 
+           #label = paste("Pearson r =", round(both, 2)), 
+           #color = "springgreen4", size = 5, hjust = -1) +
+  theme_minimal()
+ggsave("Plot_FIB4_122.png",plot4 , width = 4, height = 4)
+
+```
