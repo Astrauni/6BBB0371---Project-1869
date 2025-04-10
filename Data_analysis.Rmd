@@ -1,0 +1,83 @@
+---
+title: "Data_analysis"
+author: "Fay Lindfield-Butler"
+date: "2025-04-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Significance testing
+## Note: code was changed throughout, names of functions are not indicative of their use
+
+```{r}
+
+Baselines <- data.frame(
+  Group = c(rep("Responders", 5), rep("Non-responders", 2)), 
+  Value = c())
+
+norm_baseline <- shapiro.test(one_d1$`BEA_A`)
+norm_baselinev <- norm_HDVp$p.value
+norm_baselinen <- shapiro.test(one_d1$`BEA_BC`)
+norm_HDVnv <- norm_HDVn$p.value
+var_baseline <- levene_test(Value ~ Group, data = baseline)
+var_baselinev <- var_HDV$p
+HDV_result <- t.test(Value ~ Group, data = baseline)
+HDV_result <- HDV_result$p.value
+
+HDV_test <- cbind(norm_HDVpv, norm_HDVnv, var_HDVv, HDV_result)
+
+write.csv(HDV_test, "IFN_1.csv", row.names = FALSE)
+```
+
+# Plotting INF responses
+
+```{r}
+Trial <- read_excel("/Users/faylindfield/Documents/Project_Delta/Data/Biomarkers.xlsx", sheet = "Trial_inter")
+
+HBsAg_plot_trial <- ggplot(Trial, aes(x = Group, y = ALT_N, fill = Group)) +
+  geom_boxplot(width = 0.3) +
+  geom_jitter(position = position_jitterdodge(dodge.width = 0, jitter.width = 0), color = "black", alpha = 0.7) +
+  labs(title = "Non/partial Responders", x = "Time Point", y = "ALT [IU/L]") +
+  #stat_compare_means(method = "t.test", label = "p.format") +
+  theme_minimal() +
+  theme(
+    legend.position = "none", 
+    plot.title = element_text(face = "bold"), 
+    axis.title.x = element_text(face = "bold"),  
+    axis.title.y = element_text(face = "bold")) +
+  #scale_fill_manual(values = c("#CCCCFF", "#6495ED"))
+  #scale_fill_manual(values = c("#6495ED", "#6495ED"))
+  scale_fill_manual(values = c("#CCCCFF", "#CCCCFF")) 
+
+print(HBsAg_plot_trial)
+
+ggsave("Biomarker_plots.png",HBsAg_plot_trial , width = 4, height = 4)
+```
+
+
+
+# Checking for association
+
+```{r}
+time_points <- c(0, 12, 24, 48)
+One_RNA <- c(5.33,	4.99,	5.46)
+One_pgRNA <- c(1.59,	1.89,	1.52)
+One_RNA_pgRNA <- cor(One_RNA, One_pgRNA, method = "pearson")
+print(One_RNA_pgRNA)
+RNA_pgRNA_data <- cbind(One_RNA, One_pgRNA)
+```
+
+```{r}
+ggplot(RNA_pgRNA_data, aes(x = One_RNA, y = One_pgRNA)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, col = "springgreen4") +
+  labs(title = "Patient 10", x = "Log 10 HDV RNA local [copies/ml]", y = "pgRNA [log10 U/ml]") +
+  annotate("text", x = min(One_RNA), y = max(One_pgRNA), 
+           label = paste("Pearson r =", round(One_RNA_pgRNA, 2)), 
+           color = "springgreen4", size = 5, hjust = -1) +
+  theme_minimal()
+```
+
